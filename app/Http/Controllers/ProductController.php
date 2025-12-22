@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\File; // Tambahkan ini untuk menghapus file fisik
 
 class ProductController extends Controller
 {
@@ -33,18 +34,29 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
             'price' => 'required',
             'stock' => 'required|integer|min:0',
-            'description' => 'nullable|string'
+            'description' => 'nullable|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048' // Validasi gambar
         ]);
 
         // Format harga: hilangkan titik dan konversi ke integer
         $harga = str_replace('.', '', $validated['price']);
         
-        Product::create([
+        $data = [
             'name' => $validated['name'],
             'price' => (int)$harga,
             'stock' => $validated['stock'],
             'description' => $validated['description']
-        ]);
+        ];
+
+        // LOGIKA SIMPAN GAMBAR
+        if ($request->hasFile('image')) {
+            $file = $request->file('image');
+            $nama_file = time() . "_" . $file->getClientOriginalName();
+            $file->move(public_path('images'), $nama_file);
+            $data['image'] = $nama_file;
+        }
+
+        Product::create($data);
 
         return redirect()->route('products.index')
             ->with('success', 'Produk berhasil ditambahkan!');
@@ -55,7 +67,6 @@ class ProductController extends Controller
      */
     public function edit(Product $product)
     {
-        // Format harga untuk ditampilkan di form
         $product->formatted_price = number_format($product->price, 0, ',', '.');
         return view('products.edit', compact('product'));
     }
@@ -69,18 +80,34 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
             'price' => 'required',
             'stock' => 'required|integer|min:0',
-            'description' => 'nullable|string'
+            'description' => 'nullable|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048'
         ]);
 
-        // Format harga: hilangkan titik dan konversi ke integer
         $harga = str_replace('.', '', $validated['price']);
         
-        $product->update([
+        $data = [
             'name' => $validated['name'],
             'price' => (int)$harga,
             'stock' => $validated['stock'],
             'description' => $validated['description']
-        ]);
+        ];
+
+        // LOGIKA UPDATE GAMBAR
+        if ($request->hasFile('image')) {
+            // Hapus gambar lama jika ada di folder public/images
+            if ($product->image && File::exists(public_path('images/' . $product->image))) {
+                File::delete(public_path('images/' . $product->image));
+            }
+
+            // Upload gambar baru
+            $file = $request->file('image');
+            $nama_file = time() . "_" . $file->getClientOriginalName();
+            $file->move(public_path('images'), $nama_file);
+            $data['image'] = $nama_file;
+        }
+
+        $product->update($data);
 
         return redirect()->route('products.index')
             ->with('success', 'Produk berhasil diperbarui!');
@@ -91,6 +118,11 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
+        // Hapus file gambar dari folder saat data dihapus
+        if ($product->image && File::exists(public_path('images/' . $product->image))) {
+            File::delete(public_path('images/' . $product->image));
+        }
+
         $product->delete();
         
         return redirect()->route('products.index')
